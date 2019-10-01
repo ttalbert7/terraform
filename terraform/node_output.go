@@ -16,6 +16,12 @@ type NodeApplyableOutput struct {
 	Config *configs.Output // Config is the output in the config
 }
 
+// NodeApplyableRootOutput represents an output in the root module, which must
+// always be written to state unless except in the case of a full destroy.
+type NodeApplyableRootOutput struct {
+	*NodeApplyableOutput
+}
+
 var (
 	_ GraphNodeSubPath          = (*NodeApplyableOutput)(nil)
 	_ RemovableIfNotTargeted    = (*NodeApplyableOutput)(nil)

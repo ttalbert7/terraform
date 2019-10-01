@@ -3,6 +3,7 @@ package terraform
 import (
 	"log"
 
+	"github.com/hashicorp/terraform/addrs"
 	"github.com/hashicorp/terraform/configs"
 	"github.com/hashicorp/terraform/dag"
 )
@@ -44,13 +45,20 @@ func (t *OutputTransformer) transform(g *Graph, c *configs.Config) error {
 	// are implemented for modules.
 	path := c.Path.UnkeyedInstanceShim()
 
+	root := path.Equal(addrs.RootModuleInstance)
+
 	for _, o := range c.Module.Outputs {
 		addr := path.OutputValue(o.Name)
 		node := &NodeApplyableOutput{
 			Addr:   addr,
 			Config: o,
 		}
-		g.Add(node)
+
+		if root {
+			g.Add(&NodeApplyableRootOutput{node})
+		} else {
+			g.Add(node)
+		}
 	}
 
 	return nil

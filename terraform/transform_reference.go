@@ -89,36 +89,52 @@ func (t *ReferenceTransformer) Transform(g *Graph) error {
 	return nil
 }
 
-// DestroyReferenceTransformer is a GraphTransformer that reverses the edges
-// for locals and outputs that depend on other nodes which will be
-// removed during destroy. If a destroy node is evaluated before the local or
-// output value, it will be removed from the state, and the later interpolation
-// will fail.
+// DestroyReferenceTransformer is a FIXME that does a thing
 type DestroyValueReferenceTransformer struct{}
 
 func (t *DestroyValueReferenceTransformer) Transform(g *Graph) error {
 	vs := g.Vertices()
+
 	for _, v := range vs {
 		switch v.(type) {
-		case *NodeApplyableOutput, *NodeLocal:
-			// OK
+		case *NodeApplyableOutput, *NodeLocal, *NodeApplyableModuleVariable:
+			// Skip NodeApplyableRootOutput, since we need to leave those in
+			// for the final state. If we're doing a full destroy, they should
+			// not be in the graph.
 		default:
 			continue
 		}
 
-		// reverse any outgoing edges so that the value is evaluated first.
-		for _, e := range g.EdgesFrom(v) {
-			target := e.Target()
+		// if these nodes only exist in a destroy subgraph, then we can remove
+		// them since they no longer need to be evaluated. Destroy nodes should
+		// have been connected direcly to their dependencies for ordering
+		// already, so we don't need to reduce the graph before removing these
+		// values.
+		des, _ := g.Descendents(v)
+		subgraphNodes := des.List()
 
-			// only destroy nodes will be evaluated in reverse
-			if _, ok := target.(GraphNodeDestroyer); !ok {
-				continue
+		onlyDestroys := true
+		for _, n := range subgraphNodes {
+
+			vName := dag.VertexName(v)
+			nName := dag.VertexName(n)
+			if vName == nName {
+				log.Printf("[ERROR] DestroyValueReferenceTransformer: %s connects to itself\n", vName)
 			}
 
-			log.Printf("[TRACE] output dep: %s", dag.VertexName(target))
+			switch n.(type) {
+			case *NodeApplyableResource, *NodeApplyableResourceInstance, *NodeApplyableRootOutput:
+				onlyDestroys = false
+				log.Printf("KEEPING %T:%s for %s\n", v, dag.VertexName(v), dag.VertexName(n))
 
-			g.RemoveEdge(e)
-			g.Connect(&DestroyEdge{S: target, T: v})
+			default:
+				log.Printf("RESOURCE %T:%s connects to %s\n", v, dag.VertexName(v), dag.VertexName(n))
+			}
+		}
+
+		if onlyDestroys {
+			log.Printf("[TRACE] value %s has no create nodes, removing", dag.VertexName(v))
+			g.Remove(v)
 		}
 	}
 
@@ -137,7 +153,7 @@ func (t *PruneUnusedValuesTransformer) Transform(g *Graph) error {
 	for removed := 0; ; removed = 0 {
 		for _, v := range g.Vertices() {
 			switch v.(type) {
-			case *NodeApplyableOutput, *NodeLocal:
+			case *NodeApplyableOutput, *NodeLocal, *NodeApplyableModuleVariable:
 				// OK
 			default:
 				continue

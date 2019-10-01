@@ -174,6 +174,8 @@ func (t *TargetsTransformer) addDependencies(targetedNodes *dag.Set, g *Graph) (
 		}
 	}
 
+	return targetedNodes, nil
+
 	return targetedNodes.Filter(func(dv interface{}) bool {
 		return filterPartialOutputs(dv, targetedNodes, g)
 	}), nil
@@ -188,7 +190,10 @@ func (t *TargetsTransformer) addDependencies(targetedNodes *dag.Set, g *Graph) (
 // is required.
 func filterPartialOutputs(v interface{}, targetedNodes *dag.Set, g *Graph) bool {
 	// should this just be done with TargetDownstream?
-	if _, ok := v.(*NodeApplyableOutput); !ok {
+	switch v.(type) {
+	case *NodeApplyableOutput, *NodeApplyableRootOutput:
+		// pass
+	default:
 		return true
 	}
 

@@ -277,7 +277,38 @@ func (t *DestroyEdgeTransformer) Transform(g *Graph) error {
 		}
 	}
 
-	return t.pruneResources(g)
+	if err := t.pruneResources(g); err != nil {
+		return err
+	}
+
+	return t.pruneDestroyerEdges(g)
+}
+
+// Destroyers only need to reference other Destroy/Create nodes for proper
+// ordering, and they should not depend on any external values. Because values
+// (variables, locals, outputs) may e referencing other resource being created
+// and or destroyed, there is no way to ensure that we won't have cycles as we
+// reverse the edges for destruction.
+func (t *DestroyEdgeTransformer) pruneDestroyerEdges(g *Graph) error {
+	for _, v := range g.Vertices() {
+		_, ok := v.(GraphNodeDestroyer)
+		if !ok {
+			continue
+		}
+
+		for _, edge := range g.EdgesFrom(v) {
+			n := edge.Target()
+			switch n.(type) {
+			case GraphNodeCreator, GraphNodeDestroyer, GraphNodeProvisioner, GraphNodeProvider:
+				// these are all required for destruction
+				continue
+			}
+
+			log.Printf("[TRACE] DestroyEdgeTransformer: disconnecting %s from %s\n", dag.VertexName(n), dag.VertexName(v))
+			g.RemoveEdge(edge)
+		}
+	}
+	return nil
 }
 
 // If there are only destroy instances for a particular resource, there's no
