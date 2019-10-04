@@ -29,20 +29,22 @@ func (b *Backend) Workspaces() ([]string, error) {
 		Prefix: aws.String(prefix),
 	}
 
-	resp, err := b.s3Client.ListObjects(params)
+	wss := []string{backend.DefaultStateName}
+	err := b.s3Client.ListObjectsPages(params, func(p *s3.ListObjectsOutput, last bool) (shouldContinue bool) {
+
+		for _, obj := range p.Contents {
+			ws := b.keyEnv(*obj.Key)
+			if ws != "" {
+				wss = append(wss, ws)
+			}
+		}
+		return true
+	})
 	if err != nil {
 		if awsErr, ok := err.(awserr.Error); ok && awsErr.Code() == s3.ErrCodeNoSuchBucket {
 			return nil, fmt.Errorf(errS3NoSuchBucket, err)
 		}
 		return nil, err
-	}
-
-	wss := []string{backend.DefaultStateName}
-	for _, obj := range resp.Contents {
-		ws := b.keyEnv(*obj.Key)
-		if ws != "" {
-			wss = append(wss, ws)
-		}
 	}
 
 	sort.Strings(wss[1:])
